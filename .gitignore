@@ -1,0 +1,31 @@
+# 🧠 Environment variables (API keys, secrets)
+.env
+
+# 🗃️ SQLite database (stores HTML snapshots)
+snapshots.db
+
+# 🧾 Compiled or temporary Python files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# 🧩 Virtual environment folders
+venv/
+env/
+.venv/
+
+# 💾 Snapshots and generated data
+snapshots/
+sample_mappings.csv
+
+# 📁 Streamlit cache
+.streamlit/
+.stcache/
+.streamlit-cache/
+
+# 📦 System / editor files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
