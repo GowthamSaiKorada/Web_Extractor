@@ -36,6 +36,14 @@ with st.sidebar:
     st.caption("Use local HTML snapshots when live fetch is disabled.")
     st.markdown("---")
 
+# ------------------- Initialize Session State -------------------
+if "results" not in st.session_state:
+    st.session_state["results"] = []
+if "df" not in st.session_state:
+    st.session_state["df"] = None
+if "last_urls" not in st.session_state:
+    st.session_state["last_urls"] = ""
+
 # ------------------- Input Section -------------------
 st.subheader("🧾 Input URLs or Upload Snapshots")
 urls_text = st.text_area(
@@ -49,6 +57,12 @@ uploaded_files = st.file_uploader(
     accept_multiple_files=True,
     type=["html", "htm"]
 )
+
+# Automatically clear previous results when URLs change
+if urls_text != st.session_state["last_urls"]:
+    st.session_state["results"] = []
+    st.session_state["df"] = None
+    st.session_state["last_urls"] = urls_text
 
 # ------------------- Run Extraction -------------------
 run = st.button("🚀 Run Extraction")
@@ -108,7 +122,7 @@ if run:
         if results:
             df = pd.DataFrame(results)
 
-            # 🧩 Combine specs dict into one clean text cell
+            # Combine specs dict into one clean text cell
             def combine_specs(specs):
                 if isinstance(specs, dict) and len(specs) > 0:
                     parts = [f"{k}: {v}" for k, v in specs.items() if v and not str(v).lower().startswith("none")]
@@ -120,31 +134,38 @@ if run:
                 cols = [c for c in df.columns if c != "specs"] + ["specs"]
                 df = df[cols]
 
+            # Persist in session state
+            st.session_state["results"] = results
+            st.session_state["df"] = df
             st.success(f"✅ Extracted {len(results)} records successfully.")
-            st.dataframe(df, use_container_width=True)
 
-            # Download buttons
-            col1, col2 = st.columns(2)
-            col1.download_button(
-                label="💾 Download JSON",
-                data=json.dumps(results, indent=2, ensure_ascii=False),
-                file_name="extracted.json",
-                mime="application/json"
-            )
-            col2.download_button(
-                label="📊 Download CSV",
-                data=df.to_csv(index=False).encode("utf-8"),
-                file_name="extracted.csv",
-                mime="text/csv"
-            )
+# ✅ Always display persisted data if it exists
+if st.session_state["df"] is not None:
+    df = st.session_state["df"]
+    results = st.session_state["results"]
 
-            # Inspect record section
-            st.markdown("---")
-            st.subheader("🔍 Inspect Single Record")
-            idx = st.number_input("Select record index", 0, len(results) - 1, 0)
-            st.json(results[int(idx)])
-        else:
-            st.warning("No results extracted.")
+    st.dataframe(df, use_container_width=True)
+
+    # Download buttons
+    col1, col2 = st.columns(2)
+    col1.download_button(
+        label="💾 Download JSON",
+        data=json.dumps(results, indent=2, ensure_ascii=False),
+        file_name="extracted.json",
+        mime="application/json"
+    )
+    col2.download_button(
+        label="📊 Download CSV",
+        data=df.to_csv(index=False).encode("utf-8"),
+        file_name="extracted.csv",
+        mime="text/csv"
+    )
+
+    # Inspect record
+    st.markdown("---")
+    st.subheader("🔍 Inspect Single Record")
+    idx = st.number_input("Select record index", 0, len(results) - 1, 0)
+    st.json(results[int(idx)])
 
 # ------------------- Footer -------------------
 st.markdown("---")

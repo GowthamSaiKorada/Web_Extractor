@@ -1,0 +1,41 @@
+{
+  "description": "Defines dynamic user input schema for the Web Scraper & Data Extractor agent. Users can enter any valid URLs or upload HTML snapshots for structured extraction.",
+  "type": "object",
+  "properties": {
+    "urls": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "format": "uri"
+      },
+      "description": "A list of webpage URLs from which the agent will extract structured data (title, price, availability, specs)."
+    },
+    "html_snapshots": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Optional pre-downloaded HTML snapshot content for offline extraction when live fetch is disabled."
+    },
+    "use_gemini_ai": {
+      "type": "boolean",
+      "default": true,
+      "description": "If true, the agent uses Gemini API and NLP to infer optimal CSS selectors automatically."
+    },
+    "save_to_sqlite": {
+      "type": "boolean",
+      "default": true,
+      "description": "If true, saves snapshots and extraction results to local SQLite for reproducibility."
+    }
+  },
+  "required": ["urls"],
+  "example": {
+    "urls": [
+      "https://example.com/product1",
+      "https://example.com/product2",
+      "https://example.com/product3"
+    ],
+    "use_gemini_ai": true,
+    "save_to_sqlite": true
+  }
+}

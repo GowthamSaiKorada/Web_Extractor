@@ -1,0 +1,82 @@
+{
+  "description": "Defines the dynamic structured output schema for the Web Scraper & Data Extractor agent. Each record represents data extracted from one webpage.",
+  "type": "object",
+  "properties": {
+    "records": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "description": "The main title, heading, or product name extracted from the page."
+          },
+          "price": {
+            "type": "object",
+            "properties": {
+              "raw": {
+                "type": "string",
+                "description": "The raw price text captured from the webpage."
+              },
+              "amount": {
+                "type": "number",
+                "description": "Parsed numeric value of the price."
+              },
+              "currency": {
+                "type": "string",
+                "description": "Currency symbol or code (e.g., ₹, $, EUR)."
+              }
+            },
+            "required": ["raw"]
+          },
+          "availability": {
+            "type": "string",
+            "description": "Stock status or availability text extracted from the webpage."
+          },
+          "specs": {
+            "type": "string",
+            "description": "Combined string of key specifications or descriptive attributes."
+          },
+          "_source": {
+            "type": "string",
+            "description": "Original URL or uploaded file name for traceability."
+          },
+          "extraction_timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Timestamp indicating when this data was extracted."
+          }
+        },
+        "required": ["title", "price", "_source"]
+      }
+    }
+  },
+  "example": {
+    "records": [
+      {
+        "title": "Example Product 1",
+        "price": {
+          "raw": "$499.00",
+          "amount": 499.00,
+          "currency": "$"
+        },
+        "availability": "In stock and ready to ship",
+        "specs": "Display: 6.5-inch OLED, RAM: 8GB, Battery: 4000mAh",
+        "_source": "https://example.com/product1",
+        "extraction_timestamp": "2025-11-08T10:00:00Z"
+      },
+      {
+        "title": "Example Product 2",
+        "price": {
+          "raw": "$599.99",
+          "amount": 599.99,
+          "currency": "$"
+        },
+        "availability": "Currently unavailable",
+        "specs": "Processor: A1 Pro, Storage: 256GB, Weight: 180g",
+        "_source": "https://example.com/product2",
+        "extraction_timestamp": "2025-11-08T10:01:00Z"
+      }
+    ]
+  }
+}
