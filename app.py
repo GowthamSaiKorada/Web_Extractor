@@ -3,21 +3,12 @@ import streamlit as st
 import pandas as pd
 import json
 import os
-import sqlite3
+import requests
 from dotenv import load_dotenv
-from extractor import (
-    fetch_html,
-    snapshot_to_db,
-    extract_from_html,
-    llm_infer_selectors,
-    GEMINI_API_KEY
-)
 
-# Load environment variables (Gemini key, etc.)
+# Load environment variables
 load_dotenv()
-
-DB_PATH = "snapshots.db"
-SNAPSHOT_DIR = "snapshots"
+API_URL = os.getenv("API_URL", "http://localhost:8000")
 
 # ------------------- Streamlit Page Config -------------------
 st.set_page_config(
@@ -28,29 +19,16 @@ st.set_page_config(
 
 st.title("🕸️ Web Scraper & Data Extractor (Safe, Reproducible)")
 st.markdown("""
-This tool extracts **structured product data** (title, price, availability) from pages or snapshots.
-
-**Features:**
-- 📥 Accept URLs or HTML files  
-- 🧠 Auto-detect CSS selectors with *Gemini AI* (optional)  
-- ⚙️ Manual selector override  
-- 💾 SQLite snapshot storage for reproducibility  
-- 📤 Export to JSON / CSV
+This tool extracts **title**, **price**, **availability**, and **specifications** from pages or HTML snapshots.
 """)
 
 # ------------------- Sidebar Options -------------------
 with st.sidebar:
     st.header("⚙️ Options")
-    use_live = st.checkbox("Enable live fetch (requests)", value=True)
-    use_llm_inference = st.checkbox("Use Gemini AI for selector inference", value=True)
-    
-    # Show warning if Gemini is enabled but no API key
-    if use_llm_inference and not GEMINI_API_KEY:
-        st.warning("⚠️ Gemini API key not found! Add GEMINI_API_KEY to your .env file")
-    
+    use_live = st.checkbox("Enable live fetch (requests)", value=False)
+    use_llm_inference = st.checkbox("Use Gemini AI for selector inference", value=False)
     db_save = st.checkbox("Save snapshots to SQLite", value=True)
     show_raw_html = st.checkbox("Show raw HTML (for debugging)", value=False)
-
     st.markdown("---")
     st.caption("If live fetch is disabled, use local HTML files or snapshots.")
     st.markdown("---")
@@ -58,8 +36,8 @@ with st.sidebar:
 # ------------------- Input Section -------------------
 st.subheader("🧾 Input URLs or Upload Snapshots")
 urls_text = st.text_area(
-    "Enter one or more URLs (comma-separated):",
-    placeholder="https://example.com/product1, https://example.com/product2, https://example.com/product3",
+    "Enter one or more URLs (comma or newline separated):",
+    placeholder="https://example.com/product1, https://example.com/product2",
     height=120
 )
 
@@ -69,114 +47,88 @@ uploaded_files = st.file_uploader(
     type=["html", "htm"]
 )
 
-# ------------------- CSS Selector Mapping -------------------
-st.subheader("🎯 CSS Selectors (Optional Manual Override)")
-st.caption("Leave blank to let Gemini or built-in heuristics infer automatically.")
+# NOTE: CSS selector manual override removed per request.
+# We'll send an empty mapping to the backend so heuristics/Gemini handle selector logic.
 
-col1, col2, col3 = st.columns(3)
-mapping_input = {
-    "title": col1.text_input("Title Selector", value=""),
-    "price": col2.text_input("Price Selector", value=""),
-    "availability": col3.text_input("Availability Selector", value="")
-}
-
-# ------------------- Snapshot Selector -------------------
-os.makedirs(SNAPSHOT_DIR, exist_ok=True)
-snapshots = [f for f in os.listdir(SNAPSHOT_DIR) if f.endswith((".html", ".htm"))]
-chosen_snapshot = None
-if snapshots:
-    chosen_snapshot = st.selectbox("Or select a saved snapshot from folder:", ["(none)"] + snapshots)
-
-# ------------------- Run Extraction Button -------------------
+# ------------------- Run Extraction -------------------
 run = st.button("🚀 Run Extraction")
 st.markdown("---")
 
 if run:
-    st.info("Running extraction... please wait.")
+    st.info("Running extraction via FastAPI backend... please wait.")
+    results = []
     inputs = []
 
-    # Collect URLs (comma-separated)
+    # -------- URL Parsing (supports newline + comma mixed) --------
     if urls_text.strip():
-        # Split by comma and also handle newlines for flexibility
-        url_list = []
-        for part in urls_text.split(','):
-            # Also split by newlines in case user mixes formats
-            for line in part.splitlines():
-                line = line.strip()
-                if line:
-                    url_list.append(line)
-        
-        for url in url_list:
-            inputs.append(("url", url))
+        raw_parts = [p.strip() for part in urls_text.splitlines() for p in part.split(",")]
+        clean_urls = [u for u in dict.fromkeys(raw_parts) if u]
+        if clean_urls:
+            st.info(f"Detected {len(clean_urls)} unique URLs to extract:")
+            st.code("\n".join(clean_urls))
+            for u in clean_urls:
+                inputs.append(("url", u))
 
-    # Collect uploaded files
+    # -------- Uploaded files --------
     if uploaded_files:
         for file in uploaded_files:
             html = file.read().decode("utf-8", errors="replace")
             inputs.append(("upload", (file.name, html)))
 
-    # Collect chosen snapshot
-    if chosen_snapshot and chosen_snapshot != "(none)":
-        path = os.path.join(SNAPSHOT_DIR, chosen_snapshot)
-        with open(path, "r", encoding="utf-8") as f:
-            html = f.read()
-        inputs.append(("snapshot", (chosen_snapshot, html)))
-
     if not inputs:
-        st.warning("Please provide at least one URL, upload, or snapshot.")
+        st.warning("Please provide at least one URL or upload an HTML file.")
     else:
-        results = []
         for typ, payload in inputs:
-            html = ""
-            src = ""
-
-            # --------------- Fetch or Load HTML ---------------
+            src = html = ""
             if typ == "url":
-                url = payload
-                if not use_live:
-                    st.warning(f"Skipping live fetch (disabled): {url}")
-                    continue
-                try:
-                    final_url, html = fetch_html(url)
-                    src = final_url
-                    if db_save:
-                        snapshot_to_db(DB_PATH, final_url, html)
-                    if show_raw_html:
-                        with st.expander(f"Raw HTML for {final_url}"):
-                            st.code(html[:3000])
-                except Exception as e:
-                    st.error(f"❌ Failed to fetch {url}: {e}")
-                    continue
-            elif typ in ("upload", "snapshot"):
-                name, html = payload
-                src = name
+                src = payload
+                html = None
+            else:
+                src, html = payload
 
-            # --------------- Optional LLM Inference ---------------
-            mapping = mapping_input.copy()
-            if use_llm_inference and GEMINI_API_KEY:
-                with st.spinner(f"🤖 Using Gemini AI to infer selectors for {src}..."):
-                    inferred = llm_infer_selectors(html, GEMINI_API_KEY)
-                    if inferred:
-                        for key in ["title", "price", "availability"]:
-                            if inferred.get(key) and not mapping.get(key):
-                                mapping[key] = inferred[key]
-                        st.success(f"✅ Gemini suggested: {inferred}")
-                    else:
-                        st.warning("⚠️ Gemini could not infer selectors. Using heuristics.")
+            payload_data = {
+                "url": src if typ == "url" and use_live else None,
+                "html": html if typ != "url" else None,
+                "use_llm": use_llm_inference,
+                "mapping": {},  # no manual selectors provided
+            }
 
-            # --------------- Extract Data ---------------
             try:
-                extracted = extract_from_html(html, mapping)
-                extracted["_source"] = src
-                results.append(extracted)
+                response = requests.post(f"{API_URL}/extract", json=payload_data, timeout=60)
+                res = response.json()
+                if res.get("status") == "ok":
+                    data = res["data"]
+                    data["_source"] = src
+                    results.append(data)
+                else:
+                    st.error(f"❌ {res.get('message')}")
             except Exception as e:
-                st.error(f"❌ Extraction error for {src}: {e}")
+                st.error(f"Backend error: {e}")
 
-        # --------------- Display Results ---------------
         if results:
-            df = pd.json_normalize(results)
+            # Build DataFrame without flattening nested specs
+            df = pd.DataFrame(results)
+
+            # Combine specs dictionary into one readable cell
+            def combine_specs(specs):
+                if isinstance(specs, dict) and len(specs) > 0:
+                    parts = [
+                        f"{k}: {v}"
+                        for k, v in specs.items()
+                        if v and not str(v).lower().startswith("none")
+                    ]
+                    return ", ".join(parts)
+                return ""
+
+            if "specs" in df.columns:
+                df["specs"] = df["specs"].apply(combine_specs)
+
+                # Move 'specs' column to the end for neatness
+                cols = [c for c in df.columns if c != "specs"] + ["specs"]
+                df = df[cols]
+
             st.success(f"✅ Extracted {len(results)} records successfully.")
-            st.dataframe(df)
+            st.dataframe(df, use_container_width=True)
 
             # Download buttons
             col1, col2 = st.columns(2)
@@ -193,38 +145,13 @@ if run:
                 mime="text/csv"
             )
 
-            # Single record viewer
+            # Inspect single record (JSON preview)
             st.markdown("---")
             st.subheader("🔍 Inspect Single Record")
             idx = st.number_input("Select record index", 0, len(results) - 1, 0)
             st.json(results[int(idx)])
-
-# ------------------- Sidebar Snapshot DB Viewer -------------------
-with st.sidebar:
-    st.markdown("---")
-    if st.button("📜 Show Last 20 Snapshots (SQLite)"):
-        try:
-            conn = sqlite3.connect(DB_PATH)
-            conn.execute(
-                """
-                CREATE TABLE IF NOT EXISTS snapshots (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    url TEXT,
-                    domain TEXT,
-                    fetched_at TEXT,
-                    html TEXT
-                )
-                """
-            )
-            conn.commit()
-            df_snap = pd.read_sql_query(
-                "SELECT id, url, domain, fetched_at FROM snapshots ORDER BY id DESC LIMIT 20",
-                conn
-            )
-            st.dataframe(df_snap)
-            conn.close()
-        except Exception as e:
-            st.error(f"Error loading snapshots: {e}")
+        else:
+            st.warning("No results extracted.")
 
 # ------------------- Footer -------------------
 st.markdown("---")

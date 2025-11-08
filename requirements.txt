@@ -1,9 +1,11 @@
 streamlit
+fastapi
+uvicorn
 requests
 beautifulsoup4
 pandas
 lxml
-sqlalchemy
-tqdm
 python-dotenv
 google-genai
+sqlalchemy
+tqdm
