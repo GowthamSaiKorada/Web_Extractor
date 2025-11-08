@@ -19,18 +19,21 @@ st.set_page_config(
 
 st.title("🕸️ Web Scraper & Data Extractor (Safe, Reproducible)")
 st.markdown("""
-This tool extracts **title**, **price**, **availability**, and **specifications** from pages or HTML snapshots.
+This tool extracts **title**, **price**, **availability**, and **specifications** from web pages or uploaded HTML snapshots.
 """)
 
 # ------------------- Sidebar Options -------------------
 with st.sidebar:
     st.header("⚙️ Options")
-    use_live = st.checkbox("Enable live fetch (requests)", value=False)
-    use_llm_inference = st.checkbox("Use Gemini AI for selector inference", value=False)
+
+    # ✅ Auto-selected checkboxes
+    use_live = st.checkbox("Enable live fetch (requests)", value=True)
+    use_llm_inference = st.checkbox("Use Gemini AI for selector inference", value=True)
     db_save = st.checkbox("Save snapshots to SQLite", value=True)
-    show_raw_html = st.checkbox("Show raw HTML (for debugging)", value=False)
+
+    # ❌ Removed "Show raw HTML" section entirely
     st.markdown("---")
-    st.caption("If live fetch is disabled, use local HTML files or snapshots.")
+    st.caption("Use local HTML snapshots when live fetch is disabled.")
     st.markdown("---")
 
 # ------------------- Input Section -------------------
@@ -46,9 +49,6 @@ uploaded_files = st.file_uploader(
     accept_multiple_files=True,
     type=["html", "htm"]
 )
-
-# NOTE: CSS selector manual override removed per request.
-# We'll send an empty mapping to the backend so heuristics/Gemini handle selector logic.
 
 # ------------------- Run Extraction -------------------
 run = st.button("🚀 Run Extraction")
@@ -90,7 +90,7 @@ if run:
                 "url": src if typ == "url" and use_live else None,
                 "html": html if typ != "url" else None,
                 "use_llm": use_llm_inference,
-                "mapping": {},  # no manual selectors provided
+                "mapping": {},  # no manual selectors
             }
 
             try:
@@ -106,24 +106,17 @@ if run:
                 st.error(f"Backend error: {e}")
 
         if results:
-            # Build DataFrame without flattening nested specs
             df = pd.DataFrame(results)
 
-            # Combine specs dictionary into one readable cell
+            # 🧩 Combine specs dict into one clean text cell
             def combine_specs(specs):
                 if isinstance(specs, dict) and len(specs) > 0:
-                    parts = [
-                        f"{k}: {v}"
-                        for k, v in specs.items()
-                        if v and not str(v).lower().startswith("none")
-                    ]
+                    parts = [f"{k}: {v}" for k, v in specs.items() if v and not str(v).lower().startswith("none")]
                     return ", ".join(parts)
                 return ""
 
             if "specs" in df.columns:
                 df["specs"] = df["specs"].apply(combine_specs)
-
-                # Move 'specs' column to the end for neatness
                 cols = [c for c in df.columns if c != "specs"] + ["specs"]
                 df = df[cols]
 
@@ -145,7 +138,7 @@ if run:
                 mime="text/csv"
             )
 
-            # Inspect single record (JSON preview)
+            # Inspect record section
             st.markdown("---")
             st.subheader("🔍 Inspect Single Record")
             idx = st.number_input("Select record index", 0, len(results) - 1, 0)
